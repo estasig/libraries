@@ -17,9 +17,12 @@ extern const struct gevent_ops selectops;
 extern const struct gevent_ops pollops;
 extern const struct gevent_ops epollops;
 
+gevent_map_t g_gevent_map;
+gevent_fd_list_t g_gevent_fd_list;
+
 static const struct gevent_ops *eventops[] = {
-//    &selectops,
-    &epollops,
+    &selectops,
+//    &epollops,
     NULL
 };
 
@@ -125,6 +128,7 @@ struct gevent *gevent_create(int fd,
     struct gevent_cbs *evcb = CALLOC(1, struct gevent_cbs);
     if (!evcb) {
         loge("malloc gevent failed!\n");
+        free(e);
         return NULL;
     }
     evcb->ev_in = ev_in;
@@ -152,6 +156,7 @@ void gevent_destroy(struct gevent *e)
 {
     if (!e)
         return;
+
     if (e->evcb)
         free(e->evcb);
     free(e);
@@ -163,7 +168,15 @@ int gevent_add(struct gevent_base *eb, struct gevent *e)
         loge("%s:%d paraments is NULL\n", __func__, __LINE__);
         return -1;
     }
-    return eb->evop->add(eb, e);
+
+    if(g_gevent_map.find(e->evfd) != g_gevent_map.end())
+    {
+        loge("%s:%d already in event map\n", __func__, __LINE__);
+        return -1;
+    }
+
+    g_gevent_map[e->evfd] = e;
+    return 0;
 }
 
 int gevent_del(struct gevent_base *eb, struct gevent *e)
@@ -172,5 +185,45 @@ int gevent_del(struct gevent_base *eb, struct gevent *e)
         loge("%s:%d paraments is NULL\n", __func__, __LINE__);
         return -1;
     }
-    return eb->evop->del(eb, e);
+
+    for(gevent_fd_list_t::iterator iter=g_gevent_fd_list.begin(); iter!=g_gevent_fd_list.end(); iter++)
+    {
+        if(e->evfd == *iter)
+        {
+            g_gevent_fd_list.erase(iter);
+            break;
+        }
+    }
+
+    g_gevent_map.erase(e->evfd);
+    return 0;
 }
+
+int gevent_mod(struct gevent_base *eb, struct gevent *e,
+        void (ev_in)(int, void *),
+        void (ev_out)(int, void *),
+        void (ev_err)(int, void *))
+{
+    if (!e || !eb) {
+        loge("%s:%d paraments is NULL\n", __func__, __LINE__);
+        return -1;
+    }
+
+    int flags = 0;
+    if (ev_in) {
+        flags |= EVENT_READ;
+    }
+    if (ev_out) {
+        flags |= EVENT_WRITE;
+    }
+    if (ev_err) {
+        flags |= EVENT_ERROR;
+    }
+
+    e->flags = flags;
+    e->evcb->ev_in = ev_in;
+    e->evcb->ev_out = ev_out;
+    e->evcb->ev_err = ev_err;
+    return 0;
+}
+

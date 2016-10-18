@@ -10,10 +10,8 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <map>
+#include <list>
 
 enum gevent_flags {
     EVENT_TIMEOUT  = 1<<0,
@@ -40,6 +38,9 @@ struct gevent {
     int flags;
     struct gevent_cbs *evcb;
 };
+
+typedef std::map<int, struct gevent*> gevent_map_t;
+typedef std::list<int> gevent_fd_list_t;
 
 struct gevent_base;
 struct gevent_ops {
@@ -75,8 +76,9 @@ struct gevent *gevent_create(int fd,
 void gevent_destroy(struct gevent *e);
 int gevent_add(struct gevent_base *eb, struct gevent *e);
 int gevent_del(struct gevent_base *eb, struct gevent *e);
+int gevent_mod(struct gevent_base *eb, struct gevent *e,
+        void (ev_in)(int, void *),
+        void (ev_out)(int, void *),
+        void (ev_err)(int, void *));
 
-#ifdef __cplusplus
-}
-#endif
 #endif
